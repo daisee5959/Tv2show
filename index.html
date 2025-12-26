@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Movie Finder</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+    * { font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, sans-serif; }
+    .pixel-cat { image-rendering: pixelated; image-rendering: crisp-edges; }
+    @keyframes catBounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+    .cat-idle { animation: catBounce 2s ease-in-out infinite; }
+  </style>
+</head>
+<body class="min-h-screen bg-orange-50/30">
+  <div id="app"></div>
+
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+    const GEMINI_API_KEY = 'AIzaSyCajTR-GFRxGbOViLPzl9v-D0biYVIBMqs';
+
+    const PixelCat = ({ level, size = 64, animate = true }) => {
+      const colors = {
+        1: { body: '#FAFAFA', spot: '#F5F5F5', name: '흰냥이' },
+        2: { body: '#FFF8E7', spot: '#FFE4B5', name: '크림냥이' },
+        3: { body: '#FFD93D', spot: '#FF9F1C', name: '치즈냥이' },
+        4: { body: '#8B7355', spot: '#654321', name: '초코냥이' },
+        5: { body: '#2D2D2D', spot: '#1A1A1A', name: '깜냥이' },
+      };
+      const cat = colors[level] || colors[1];
+      const eyeColor = level === 5 ? '#FFD700' : '#2D2D2D';
+      
+      return (
+        <svg width={size} height={size} viewBox="0 0 32 32" className={`pixel-cat ${animate ? 'cat-idle' : ''}`} style={{ shapeRendering: 'crispEdges' }}>
+          <rect x="6" y="4" width="4" height="4" fill={cat.body} />
+          <rect x="7" y="5" width="2" height="2" fill="#FFB6C1" />
+          <rect x="22" y="4" width="4" height="4" fill={cat.body} />
+          <rect x="23" y="5" width="2" height="2" fill="#FFB6C1" />
+          <rect x="8" y="6" width="16" height="12" fill={cat.body} />
+          <rect x="6" y="8" width="2" height="8" fill={cat.body} />
+          <rect x="24" y="8" width="2" height="8" fill={cat.body} />
+          <rect x="10" y="10" width="3" height="3" fill={eyeColor} />
+          <rect x="19" y="10" width="3" height="3" fill={eyeColor} />
+          <rect x="11" y="11" width="1" height="1" fill="white" />
+          <rect x="20" y="11" width="1" height="1" fill="white" />
+          <rect x="15" y="14" width="2" height="2" fill="#FFB6C1" />
+          <rect x="14" y="16" width="1" height="1" fill="#2D2D2D" />
+          <rect x="17" y="16" width="1" height="1" fill="#2D2D2D" />
+          <rect x="6" y="13" width="3" height="1" fill="#888" />
+          <rect x="6" y="15" width="3" height="1" fill="#888" />
+          <rect x="23" y="13" width="3" height="1" fill="#888" />
+          <rect x="23" y="15" width="3" height="1" fill="#888" />
+          <rect x="10" y="18" width="12" height="8" fill={cat.body} />
+          <rect x="8" y="20" width="2" height="4" fill={cat.body} />
+          <rect x="22" y="20" width="2" height="4" fill={cat.body} />
+          {(level === 3 || level === 4) && (<>
+            <rect x="12" y="8" width="3" height="2" fill={cat.spot} />
+            <rect x="18" y="9" width="2" height="3" fill={cat.spot} />
+            <rect x="11" y="20" width="3" height="2" fill={cat.spot} />
+            <rect x="17" y="21" width="4" height="2" fill={cat.spot} />
+          </>)}
+          <rect x="10" y="26" width="3" height="2" fill={cat.body} />
+          <rect x="19" y="26" width="3" height="2" fill={cat.body} />
+          <rect x="24" y="22" width="2" height="2" fill={cat.body} />
+          <rect x="26" y="20" width="2" height="2" fill={cat.body} />
+          <rect x="27" y="18" width="2" height="3" fill={cat.body} />
+        </svg>
+      );
+    };
+
+    function MovieRecommender() {
+      const [activeTab, setActiveTab] = useState('recommend');
+      const [step, setStep] = useState('input');
+      const [preferences, setPreferences] = useState({ mood: '', genres: [], selectedMovie: '' });
+      const [recommendations, setRecommendations] = useState([]);
+      const [myReviews, setMyReviews] = useState([]);
+      const [newReview, setNewReview] = useState({ title: '', rating: -1, review: '', date: '', genre: '' });
+      const [editingReview, setEditingReview] = useState(null);
+      const [showReviewDropdown, setShowReviewDropdown] = useState(false);
+      const [calendarMonth, setCalendarMonth] = useState(new Date());
+      const [recordSearchResults, setRecordSearchResults] = useState([]);
+      const [recordSearchLoading, setRecordSearchLoading] = useState(false);
+      const [showRecordResults, setShowRecordResults] = useState(false);
+      const [recSearchQuery, setRecSearchQuery] = useState('');
+      const [recSearchResults, setRecSearchResults] = useState([]);
+      const [recSearchLoading, setRecSearchLoading] = useState(false);
+      const [showRecResults, setShowRecResults] = useState(false);
+      const [toast, setToast] = useState('');
+      const [showLevelUp, setShowLevelUp] = useState(false);
+      const [showLevelModal, setShowLevelModal] = useState(false);
+      const recordSearchRef = useRef(null);
+      const recSearchRef = useRef(null);
+      const searchTimerRef = useRef(null);
+      const recSearchTimerRef = useRef(null);
+
+      useEffect(() => {
+        const saved = localStorage.getItem('movieReviews');
+        if (saved) { try { setMyReviews(JSON.parse(saved)); } catch (e) {} }
+      }, []);
+
+      useEffect(() => {
+        localStorage.setItem('movieReviews', JSON.stringify(myReviews));
+      }, [myReviews]);
+
+      const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 2000); };
+
+      const moods = [
+        { id: 'exciting', label: '긴장감' }, { id: 'emotional', label: '감성' },
+        { id: 'fun', label: '유쾌' }, { id: 'thoughtful', label: '사색' },
+        { id: 'romantic', label: '로맨스' }, { id: 'scary', label: '공포' }
+      ];
+
+      const genres = ['SF', '액션', '스릴러', '드라마', '코미디', '로맨스', '호러', '애니메이션', '다큐', '범죄', '판타지', '미스터리', 'LGBT/퀴어'];
+
+      const levelData = [
+        { level: 1, name: '흰냥이', title: '영화 입문자', required: 0 },
+        { level: 2, name: '크림냥이', title: '영화 팬', required: 5 },
+        { level: 3, name: '치즈냥이', title: '영화 애호가', required: 15 },
+        { level: 4, name: '초코냥이', title: '시네필', required: 30 },
+        { level: 5, name: '깜냥이', title: '영화 마스터', required: 50 },
+      ];
+
+      const getCharacterLevel = (count = myReviews.length) => {
+        if (count >= 50) return { level: 5, name: '깜냥이', title: '영화 마스터', next: null, prevThreshold: 50 };
+        if (count >= 30) return { level: 4, name: '초코냥이', title: '시네필', next: 50, prevThreshold: 30 };
+        if (count >= 15) return { level: 3, name: '치즈냥이', title: '영화 애호가', next: 30, prevThreshold: 15 };
+        if (count >= 5) return { level: 2, name: '크림냥이', title: '영화 팬', next: 15, prevThreshold: 5 };
+        return { level: 1, name: '흰냥이', title: '영화 입문자', next: 5, prevThreshold: 0 };
+      };
+
+      const character = getCharacterLevel();
+
+      // 날짜 파싱 - 다양한 형식 지원
+      const parseDate = (value) => {
+        const numbers = value.replace(/\D/g, '');
+        const currentYear = new Date().getFullYear();
+        const currentYearShort = currentYear % 100;
+        
+        // YYYYMMDD (8자리)
+        if (numbers.length === 8) {
+          return `${numbers.slice(0,4)}-${numbers.slice(4,6)}-${numbers.slice(6,8)}`;
+        }
+        // YYMMDD (6자리) - 251206 -> 2025-12-06
+        if (numbers.length === 6) {
+          let yy = parseInt(numbers.slice(0,2));
+          // 00-99 -> 2000-2099 (단순 처리)
+          const yyyy = yy <= currentYearShort + 5 ? 2000 + yy : 1900 + yy;
+          return `${yyyy}-${numbers.slice(2,4)}-${numbers.slice(4,6)}`;
+        }
+        // MMDD (4자리) - 1227 -> 현재년도-12-27
+        if (numbers.length === 4) {
+          return `${currentYear}-${numbers.slice(0,2)}-${numbers.slice(2,4)}`;
+        }
+        // 그 외는 원본 유지
+        return value;
+      };
+
+      const handleDateInput = (value) => {
+        const parsed = parseDate(value);
+        // YYYY-MM-DD 형식인지 확인
+        if (/^\d{4}-\d{2}-\d{2}$/.test(parsed)) {
+          setNewReview(prev => ({ ...prev, date: parsed }));
+        } else {
+          setNewReview(prev => ({ ...prev, date: value }));
+        }
+      };
+
+      const handleDateBlur = (e) => {
+        const parsed = parseDate(e.target.value);
+        if (/^\d{4}-\d{2}-\d{2}$/.test(parsed)) {
+          setNewReview(prev => ({ ...prev, date: parsed }));
+        }
+      };
+
+      const searchMovies = async (query, type) => {
+        if (!query || query.length < 2) {
+          if (type === 'record') { setRecordSearchResults([]); setShowRecordResults(false); }
+          else { setRecSearchResults([]); setShowRecResults(false); }
+          return;
+        }
+        if (type === 'record') setRecordSearchLoading(true); else setRecSearchLoading(true);
+        try {
+          const response = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
+            { method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ contents: [{ parts: [{ text: `"${query}"를 포함하는 실제 영화 5개. JSON 배열만: [{"title": "영화제목", "year": 2020}]` }] }], generationConfig: { temperature: 0.1 } }) }
+          );
+          if (!response.ok) throw new Error(`API 오류: ${response.status}`);
+          const data = await response.json();
+          const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+          const match = text.match(/\[[\s\S]*?\]/);
+          const results = match ? JSON.parse(match[0]) : [];
+          if (type === 'record') { setRecordSearchResults(results); setShowRecordResults(results.length > 0); }
+          else { setRecSearchResults(results); setShowRecResults(results.length > 0); }
+        } catch (e) { 
+          console.error('검색 오류:', e);
+        }
+        if (type === 'record') setRecordSearchLoading(false); else setRecSearchLoading(false);
+      };
+
+      const handleRecordTitleChange = (value) => {
+        setNewReview(prev => ({ ...prev, title: value }));
+        if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+        if (value.length >= 2) { searchTimerRef.current = setTimeout(() => searchMovies(value, 'record'), 600); }
+        else { setRecordSearchResults([]); setShowRecordResults(false); }
+      };
+
+      const handleRecSearchChange = (value) => {
+        setRecSearchQuery(value);
+        setPreferences(prev => ({ ...prev, selectedMovie: '' }));
+        if (recSearchTimerRef.current) clearTimeout(recSearchTimerRef.current);
+        if (value.length >= 2) { recSearchTimerRef.current = setTimeout(() => searchMovies(value, 'recommend'), 600); }
+        else { setRecSearchResults([]); setShowRecResults(false); }
+      };
+
+      const getRecommendations = async () => {
+        setStep('loading');
+        const movieRef = preferences.selectedMovie || recSearchQuery;
+        const prompt = `영화 추천해줘. 취향: 기분-${moods.find(m => m.id === preferences.mood)?.label || '미선택'}, 장르-${preferences.genres.join(', ') || '미선택'}, 좋아한 영화-${movieRef || '미입력'}${myReviews.length > 0 ? `, 높은 평점-${myReviews.filter(r => r.rating >= 4).map(r => r.title).slice(0, 5).join(', ')}` : ''}. 3편 추천. JSON만: [{"title": "제목", "year": 2020, "genres": ["장르"], "reason": "이유 2문장"}]`;
+        try {
+          const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
+            { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.9 } }) });
+          if (!response.ok) throw new Error(`API 오류: ${response.status}`);
+          const data = await response.json();
+          const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+          const match = text.match(/\[[\s\S]*\]/);
+          if (match) { setRecommendations(JSON.parse(match[0])); setStep('results'); } else throw new Error('파싱 실패');
+        } catch (e) { 
+          console.error('추천 오류:', e);
+          showToast('추천 실패 - 다시 시도해주세요');
+          setStep('input'); 
+        }
+      };
+
+      const createGoogleCalendarLink = (review) => {
+        const date = review.date || new Date().toISOString().split('T')[0];
+        return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(`🎬 ${review.title} 감상`)}&dates=${date.replace(/-/g, '')}/${date.replace(/-/g, '')}&details=${encodeURIComponent(`평점: ${'★'.repeat(review.rating)}${'☆'.repeat(5-review.rating)}\n${review.review || ''}`)}`;
+      };
+
+      const toggleGenre = (genre) => setPreferences(prev => ({ ...prev, genres: prev.genres.includes(genre) ? prev.genres.filter(g => g !== genre) : [...prev.genres, genre] }));
+      const selectFromMyReviews = (review) => { setPreferences(prev => ({ ...prev, selectedMovie: review.title })); setRecSearchQuery(''); setShowReviewDropdown(false); };
+      const selectRecMovie = (movie) => { setPreferences(prev => ({ ...prev, selectedMovie: movie.title })); setRecSearchQuery(''); setRecSearchResults([]); setShowRecResults(false); };
+      const selectRecordMovie = (movie) => { setNewReview(prev => ({ ...prev, title: movie.title })); setRecordSearchResults([]); setShowRecordResults(false); };
+
+      const addReview = () => {
+        if (!newReview.title.trim() || newReview.rating < 0) return;
+        
+        if (editingReview) {
+          // 수정 모드
+          setMyReviews(prev => prev.map(r => r.id === editingReview.id ? { ...r, ...newReview } : r));
+          setEditingReview(null);
+          showToast('수정됨!');
+        } else {
+          // 새로 추가
+          const prevLevel = getCharacterLevel(myReviews.length);
+          const review = { id: Date.now(), ...newReview, date: newReview.date || new Date().toISOString().split('T')[0] };
+          const newReviews = [review, ...myReviews];
+          setMyReviews(newReviews);
+          const newLevel = getCharacterLevel(newReviews.length);
+          if (newLevel.level > prevLevel.level) {
+            setShowLevelUp(true);
+            setTimeout(() => setShowLevelUp(false), 3000);
+          }
+          showToast('저장됨!');
+        }
+        setNewReview({ title: '', rating: -1, review: '', date: '', genre: '' });
+      };
+
+      const startEdit = (review) => {
+        setEditingReview(review);
+        setNewReview({
+          title: review.title,
+          rating: review.rating,
+          review: review.review || '',
+          date: review.date || '',
+          genre: review.genre || ''
+        });
+        setActiveTab('review');
+      };
+
+      const cancelEdit = () => {
+        setEditingReview(null);
+        setNewReview({ title: '', rating: -1, review: '', date: '', genre: '' });
+      };
+
+      const deleteReview = (id) => { setMyReviews(prev => prev.filter(r => r.id !== id)); showToast('삭제됨'); };
+      
+      const formatDate = (dateStr) => { 
+        if (!dateStr) return ''; 
+        const [y, m, d] = dateStr.split('-'); 
+        return `${y}. ${parseInt(m)}. ${parseInt(d)}.`; 
+      };
+
+      const getDaysInMonth = (date) => {
+        const year = date.getFullYear(); const month = date.getMonth();
+        const firstDay = new Date(year, month, 1); const lastDay = new Date(year, month + 1, 0);
+        const days = []; for (let i = 0; i < firstDay.getDay(); i++) days.push(null);
+        for (let i = 1; i <= lastDay.getDate(); i++) days.push(i); return days;
+      };
+
+      const getMoviesOnDate = (day) => {
+        if (!day) return [];
+        const dateStr = `${calendarMonth.getFullYear()}-${String(calendarMonth.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        return myReviews.filter(r => r.date === dateStr);
+      };
+
+      const getTopRated = () => [...myReviews].sort((a, b) => b.rating - a.rating).slice(0, 5);
+      const getGenreStats = () => { const stats = {}; myReviews.forEach(r => { if (r.genre) stats[r.genre] = (stats[r.genre] || 0) + 1; }); return Object.entries(stats).sort((a, b) => b[1] - a[1]); };
+      const getMonthlyCount = () => myReviews.filter(r => r.date.startsWith(new Date().toISOString().slice(0, 7))).length;
+      const getAverageRating = () => myReviews.length ? (myReviews.reduce((a, r) => a + r.rating, 0) / myReviews.length).toFixed(1) : 0;
+
+      useEffect(() => {
+        const handleClick = (e) => {
+          if (recordSearchRef.current && !recordSearchRef.current.contains(e.target)) setShowRecordResults(false);
+          if (recSearchRef.current && !recSearchRef.current.contains(e.target)) setShowRecResults(false);
+        };
+        document.addEventListener('click', handleClick);
+        return () => document.removeEventListener('click', handleClick);
+      }, []);
+
+      const resetRecommend = () => { setStep('input'); setPreferences({ mood: '', genres: [], selectedMovie: '' }); setRecSearchQuery(''); };
+
+      const getProgress = () => {
+        if (!character.next) return 100;
+        const current = myReviews.length - character.prevThreshold;
+        const total = character.next - character.prevThreshold;
+        return (current / total) * 100;
+      };
+
+      // 별점 렌더링 (0점 포함)
+      const renderStars = (rating) => {
+        if (rating === 0) return '☆☆☆☆☆';
+        return '★'.repeat(rating) + '☆'.repeat(5 - rating);
+      };
+
+      return (
+        <div className="min-h-screen bg-amber-50/50">
+          {toast && <div className="fixed top-4 left-1/2 -translate-x-1/2 bg-stone-800 text-white px-4 py-2 rounded-lg text-sm z-50">{toast}</div>}
+          
+          {/* 레벨업 모달 */}
+          {showLevelUp && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowLevelUp(false)}>
+              <div className="bg-white rounded-3xl p-8 text-center mx-4 animate-bounce">
+                <div className="mb-4"><PixelCat level={character.level} size={96} animate={true} /></div>
+                <h2 className="text-xl font-bold text-stone-800 mb-2">레벨 업!</h2>
+                <p className="text-amber-600 font-medium">{character.name} ({character.title})</p>
+                <p className="text-sm text-stone-500 mt-2">축하해요! 🎉</p>
+              </div>
+            </div>
+          )}
+
+          {/* 레벨 목록 모달 */}
+          {showLevelModal && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowLevelModal(false)}>
+              <div className="bg-white rounded-2xl p-6 mx-4 max-w-sm w-full" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-bold text-stone-800">냥이 도감</h2>
+                  <button onClick={() => setShowLevelModal(false)} className="text-stone-400 hover:text-stone-600">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                  </button>
+                </div>
+                <div className="space-y-3">
+                  {levelData.map(lv => {
+                    const unlocked = myReviews.length >= lv.required;
+                    return (
+                      <div key={lv.level} className={`flex items-center gap-3 p-3 rounded-xl ${unlocked ? 'bg-amber-50' : 'bg-stone-100'}`}>
+                        <div className={unlocked ? '' : 'opacity-30 grayscale'}>
+                          <PixelCat level={lv.level} size={40} animate={unlocked && lv.level === character.level} />
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className={`text-sm font-medium ${unlocked ? 'text-stone-800' : 'text-stone-400'}`}>
+                              Lv.{lv.level} {lv.name}
+                            </span>
+                            {lv.level === character.level && <span className="text-xs bg-amber-400 text-white px-1.5 py-0.5 rounded">현재</span>}
+                          </div>
+                          <div className="text-xs text-stone-500">{lv.title}</div>
+                        </div>
+                        <div className="text-xs text-stone-400">
+                          {unlocked ? '✓' : `${lv.required}편`}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="mt-4 text-center text-xs text-stone-500">
+                  현재 {myReviews.length}편 감상 완료!
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 헤더 */}
+          <header className="bg-orange-50/80 backdrop-blur-sm sticky top-0 z-10 border-b border-amber-100/50">
+            <div className="max-w-2xl mx-auto px-4 py-4">
+              <div className="flex items-center justify-between mb-4">
+                <h1 className="text-lg font-semibold text-stone-700 tracking-tight">Movie Finder</h1>
+                <button 
+                  onClick={() => setShowLevelModal(true)}
+                  className="flex items-center gap-2 bg-amber-100 pl-1 pr-3 py-1 rounded-full hover:bg-amber-200 transition-colors"
+                >
+                  <PixelCat level={character.level} size={28} animate={false} />
+                  <span className="text-xs text-stone-600 font-medium">Lv.{character.level}</span>
+                </button>
+              </div>
+              <nav className="flex gap-1 overflow-x-auto pb-1">
+                {['recommend', 'review', 'calendar', 'awards', 'myReviews'].map(tab => (
+                  <button key={tab} onClick={() => { setActiveTab(tab); setStep('input'); if (tab !== 'review') cancelEdit(); }}
+                    className={`px-4 py-2 text-sm rounded-lg transition-all whitespace-nowrap ${activeTab === tab ? 'bg-amber-100 text-stone-800 font-medium' : 'text-stone-500 hover:text-stone-700'}`}>
+                    {tab === 'recommend' ? '추천' : tab === 'review' ? '기록' : tab === 'calendar' ? '캘린더' : tab === 'awards' ? '어워드' : '리뷰'}
+                  </button>
+                ))}
+              </nav>
+            </div>
+          </header>
+
+          <main className="max-w-2xl mx-auto px-4 py-8">
+            
+            {/* 추천 탭 */}
+            {activeTab === 'recommend' && (
+              <>
+                {step === 'input' && (
+                  <div className="space-y-8">
+                    <section>
+                      <label className="block text-xs text-stone-500 uppercase tracking-widest mb-3">기분</label>
+                      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                        {moods.map(mood => (
+                          <button key={mood.id} onClick={() => setPreferences(prev => ({ ...prev, mood: prev.mood === mood.id ? '' : mood.id }))}
+                            className={`py-3 px-2 rounded-xl text-sm transition-all ${preferences.mood === mood.id ? 'bg-amber-200 text-stone-800 font-medium' : 'bg-white text-stone-600 hover:bg-amber-50 border border-amber-100'}`}>
+                            {mood.label}
+                          </button>
+                        ))}
+                      </div>
+                    </section>
+
+                    <section>
+                      <label className="block text-xs text-stone-500 uppercase tracking-widest mb-3">장르</label>
+                      <div className="flex flex-wrap gap-2">
+                        {genres.map(genre => (
+                          <button key={genre} onClick={() => toggleGenre(genre)}
+                            className={`px-3 py-1.5 rounded-full text-sm transition-all ${preferences.genres.includes(genre) ? 'bg-amber-200 text-stone-800 font-medium' : 'bg-white text-stone-600 hover:bg-amber-50 border border-amber-100'}`}>
+                            {genre}
+                          </button>
+                        ))}
+                      </div>
+                    </section>
+
+                    <section>
+                      <label className="block text-xs text-stone-500 uppercase tracking-widest mb-3">최근 재밌게 본 영화</label>
+                      {myReviews.length > 0 && (
+                        <div className="relative mb-2">
+                          <button onClick={() => setShowReviewDropdown(!showReviewDropdown)}
+                            className="w-full bg-white border border-amber-100 rounded-xl px-4 py-3 text-left flex items-center justify-between hover:bg-amber-50">
+                            <span className="text-stone-400">내 리뷰에서 선택</span>
+                            <svg className={`w-4 h-4 text-stone-400 transition-transform ${showReviewDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                          </button>
+                          {showReviewDropdown && (
+                            <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-lg overflow-hidden z-30 max-h-48 overflow-y-auto border border-amber-100">
+                              {myReviews.map(review => (
+                                <button key={review.id} onClick={() => selectFromMyReviews(review)}
+                                  className="w-full px-4 py-3 text-left hover:bg-amber-50 border-b border-amber-50 last:border-0">
+                                  <div className="text-sm text-stone-800">{review.title}</div>
+                                  <div className="text-xs text-amber-500">{renderStars(review.rating)}</div>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      <div className="relative" ref={recSearchRef}>
+                        <input type="text" value={preferences.selectedMovie || recSearchQuery} onChange={(e) => handleRecSearchChange(e.target.value)}
+                          placeholder="영화 제목 검색 또는 직접 입력" className="w-full bg-white border border-amber-100 rounded-xl px-4 py-3 text-stone-800 placeholder-stone-400 focus:outline-none focus:border-amber-300" />
+                        {recSearchLoading && <div className="absolute right-4 top-1/2 -translate-y-1/2"><div className="w-4 h-4 border-2 border-amber-200 border-t-amber-500 rounded-full animate-spin" /></div>}
+                        {showRecResults && recSearchResults.length > 0 && (
+                          <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-lg overflow-hidden z-20 border border-amber-100 max-h-64 overflow-y-auto">
+                            {recSearchResults.map((movie, idx) => (
+                              <button key={idx} onClick={() => selectRecMovie(movie)} className="w-full px-4 py-3 text-left hover:bg-amber-50 border-b border-amber-50 last:border-0">
+                                <div className="text-sm text-stone-800">{movie.title}</div>
+                                <div className="text-xs text-stone-500">{movie.year}</div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      {preferences.selectedMovie && (
+                        <div className="mt-2 flex items-center gap-2">
+                          <span className="text-sm text-amber-700 bg-amber-100 px-3 py-1 rounded-full">{preferences.selectedMovie}</span>
+                          <button onClick={() => setPreferences(prev => ({ ...prev, selectedMovie: '' }))} className="text-stone-400 hover:text-stone-600">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                          </button>
+                        </div>
+                      )}
+                    </section>
+
+                    <button onClick={getRecommendations}
+                      className="w-full py-4 bg-amber-200 text-stone-800 font-medium rounded-xl hover:bg-amber-300 transition-colors">
+                      추천받기
+                    </button>
+                  </div>
+                )}
+
+                {step === 'loading' && (
+                  <div className="flex flex-col items-center justify-center py-20">
+                    <div className="mb-4"><PixelCat level={character.level} size={64} animate={true} /></div>
+                    <p className="text-stone-600">냥이가 영화 찾는 중...</p>
+                  </div>
+                )}
+
+                {step === 'results' && (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between mb-6">
+                      <h2 className="text-stone-700 font-medium">추천 결과</h2>
+                      <button onClick={resetRecommend} className="text-sm text-stone-500">다시 찾기</button>
+                    </div>
+                    {recommendations.map((movie, idx) => (
+                      <article key={idx} className="bg-white rounded-2xl p-5 border border-amber-100">
+                        <h3 className="text-stone-800 font-medium">{movie.title}</h3>
+                        <p className="text-sm text-stone-500 mt-0.5">{movie.year}</p>
+                        <div className="flex flex-wrap gap-1.5 my-3">
+                          {movie.genres?.map(g => <span key={g} className="px-2 py-0.5 bg-amber-50 text-amber-700 text-xs rounded-full">{g}</span>)}
+                        </div>
+                        <p className="text-sm text-stone-600">{movie.reason}</p>
+                      </article>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* 기록 탭 */}
+            {activeTab === 'review' && (
+              <div className="space-y-6">
+                {/* 수정 모드 표시 */}
+                {editingReview && (
+                  <div className="bg-amber-100 rounded-xl p-3 flex items-center justify-between">
+                    <span className="text-sm text-amber-800">"{editingReview.title}" 수정 중</span>
+                    <button onClick={cancelEdit} className="text-xs text-amber-600 hover:text-amber-800">취소</button>
+                  </div>
+                )}
+
+                {!editingReview && (
+                  <div className="bg-white rounded-2xl p-4 border border-amber-100">
+                    <div className="flex items-center gap-4">
+                      <PixelCat level={character.level} size={56} animate={true} />
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-sm font-medium text-stone-800">Lv.{character.level} {character.name}</span>
+                          <span className="text-xs text-stone-500">({character.title})</span>
+                        </div>
+                        <div className="text-xs text-stone-500 mb-2">
+                          {character.next ? `다음 레벨까지 ${character.next - myReviews.length}편` : '최고 레벨 달성! 🎉'}
+                        </div>
+                        {character.next && (
+                          <div className="bg-amber-50 rounded-full h-2 overflow-hidden">
+                            <div className="h-full bg-amber-400 rounded-full transition-all" style={{ width: `${getProgress()}%` }} />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <section>
+                  <label className="block text-xs text-stone-500 uppercase tracking-widest mb-3">영화 제목</label>
+                  <div className="relative" ref={recordSearchRef}>
+                    <input type="text" value={newReview.title} onChange={(e) => handleRecordTitleChange(e.target.value)}
+                      onFocus={() => { if (newReview.title.length >= 2 && recordSearchResults.length > 0) setShowRecordResults(true); }}
+                      placeholder="영화 제목" className="w-full bg-white border border-amber-100 rounded-xl px-4 py-3 text-stone-800 placeholder-stone-400 focus:outline-none focus:border-amber-300" />
+                    {recordSearchLoading && <div className="absolute right-4 top-1/2 -translate-y-1/2"><div className="w-4 h-4 border-2 border-amber-200 border-t-amber-500 rounded-full animate-spin" /></div>}
+                    {showRecordResults && recordSearchResults.length > 0 && (
+                      <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-lg overflow-hidden z-20 border border-amber-100 max-h-64 overflow-y-auto">
+                        {recordSearchResults.map((movie, idx) => (
+                          <button key={idx} onClick={() => selectRecordMovie(movie)} className="w-full px-4 py-3 text-left hover:bg-amber-50 border-b border-amber-50 last:border-0">
+                            <div className="text-sm text-stone-800">{movie.title}</div>
+                            <div className="text-xs text-stone-500">{movie.year}</div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </section>
+
+                <section>
+                  <label className="block text-xs text-stone-500 uppercase tracking-widest mb-3">관람일</label>
+                  <div className="flex gap-2">
+                    <input type="text" value={newReview.date} 
+                      onChange={(e) => setNewReview(prev => ({ ...prev, date: e.target.value }))}
+                      onBlur={handleDateBlur}
+                      placeholder="1227, 251206, 20251206"
+                      className="flex-1 bg-white border border-amber-100 rounded-xl px-4 py-3 text-stone-800 placeholder-stone-400 focus:outline-none focus:border-amber-300" />
+                    <input type="date" value={newReview.date} onChange={(e) => setNewReview(prev => ({ ...prev, date: e.target.value }))}
+                      className="bg-white border border-amber-100 rounded-xl px-3 py-3 text-stone-800 focus:outline-none focus:border-amber-300" />
+                  </div>
+                </section>
+
+                <section>
+                  <label className="block text-xs text-stone-500 uppercase tracking-widest mb-3">장르 (선택)</label>
+                  <div className="flex flex-wrap gap-2">
+                    {genres.map(genre => (
+                      <button key={genre} onClick={() => setNewReview(prev => ({ ...prev, genre: prev.genre === genre ? '' : genre }))}
+                        className={`px-3 py-1.5 rounded-full text-sm transition-all ${newReview.genre === genre ? 'bg-amber-200 text-stone-800 font-medium' : 'bg-white text-stone-600 hover:bg-amber-50 border border-amber-100'}`}>
+                        {genre}
+                      </button>
+                    ))}
+                  </div>
+                </section>
+
+                <section>
+                  <label className="block text-xs text-stone-500 uppercase tracking-widest mb-3">평점</label>
+                  <div className="flex gap-2">
+                    {[0, 1, 2, 3, 4, 5].map(star => (
+                      <button key={star} onClick={() => setNewReview(prev => ({ ...prev, rating: star }))}
+                        className={`w-11 h-11 rounded-xl text-base transition-all flex items-center justify-center ${
+                          newReview.rating === star 
+                            ? 'bg-amber-300 text-white ring-2 ring-amber-400' 
+                            : newReview.rating > star 
+                              ? 'bg-amber-200 text-amber-600' 
+                              : 'bg-white text-stone-300 hover:bg-amber-50 border border-amber-100'
+                        }`}>
+                        {star === 0 ? '0' : '★'}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-stone-400 mt-2">
+                    {newReview.rating >= 0 ? `${newReview.rating}점 선택됨` : '평점을 선택하세요'}
+                  </p>
+                </section>
+
+                <section>
+                  <label className="block text-xs text-stone-500 uppercase tracking-widest mb-3">한줄평</label>
+                  <textarea value={newReview.review} onChange={(e) => setNewReview(prev => ({ ...prev, review: e.target.value }))}
+                    placeholder="이 영화 어땠나요?" rows={3}
+                    className="w-full bg-white border border-amber-100 rounded-xl px-4 py-3 text-stone-800 placeholder-stone-400 focus:outline-none focus:border-amber-300 resize-none" />
+                </section>
+
+                <button onClick={addReview} disabled={!newReview.title.trim() || newReview.rating < 0}
+                  className="w-full py-4 bg-amber-200 text-stone-800 font-medium rounded-xl hover:bg-amber-300 disabled:bg-amber-100 disabled:text-stone-400 disabled:cursor-not-allowed transition-colors">
+                  {editingReview ? '수정하기' : '저장하기'}
+                </button>
+              </div>
+            )}
+
+            {/* 캘린더 탭 */}
+            {activeTab === 'calendar' && (
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <button onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1))} className="p-2 text-stone-500 hover:bg-amber-50 rounded-lg">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                  </button>
+                  <h2 className="text-stone-700 font-medium">{calendarMonth.getFullYear()}년 {calendarMonth.getMonth() + 1}월</h2>
+                  <button onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1))} className="p-2 text-stone-500 hover:bg-amber-50 rounded-lg">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                  </button>
+                </div>
+                <div className="bg-white rounded-2xl p-4 border border-amber-100">
+                  <div className="grid grid-cols-7 gap-1 mb-2">
+                    {['일', '월', '화', '수', '목', '금', '토'].map(d => <div key={d} className="text-center text-xs text-stone-500 py-2">{d}</div>)}
+                  </div>
+                  <div className="grid grid-cols-7 gap-1">
+                    {getDaysInMonth(calendarMonth).map((day, idx) => {
+                      const movies = getMoviesOnDate(day);
+                      return (
+                        <div key={idx} className={`aspect-square p-1 rounded-lg text-sm ${day ? 'hover:bg-amber-50' : ''}`}>
+                          {day && (<>
+                            <div className={`text-xs ${movies.length > 0 ? 'text-amber-600 font-medium' : 'text-stone-500'}`}>{day}</div>
+                            {movies.length > 0 && <div className="mt-0.5 flex gap-0.5 flex-wrap">{movies.slice(0, 3).map((_, i) => <div key={i} className="w-1.5 h-1.5 bg-amber-400 rounded-full" />)}</div>}
+                          </>)}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div className="bg-white rounded-2xl p-5 border border-amber-100">
+                  <h3 className="text-sm text-stone-500 mb-3">이번 달 기록</h3>
+                  <div className="text-3xl font-semibold text-stone-800">
+                    {myReviews.filter(r => { const rm = r.date.slice(0, 7); const cm = `${calendarMonth.getFullYear()}-${String(calendarMonth.getMonth() + 1).padStart(2, '0')}`; return rm === cm; }).length}편
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 어워드 탭 */}
+            {activeTab === 'awards' && (
+              <div className="space-y-6">
+                <div className="bg-gradient-to-br from-amber-100 to-orange-100 rounded-2xl p-6">
+                  <div className="flex justify-center gap-4 mb-4">
+                    {[1, 2, 3, 4, 5].map(lv => (
+                      <div key={lv} className={`transition-all ${lv <= character.level ? 'opacity-100' : 'opacity-30 grayscale'}`}>
+                        <PixelCat level={lv} size={lv === character.level ? 56 : 40} animate={lv === character.level} />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="text-center">
+                    <div className="text-lg font-semibold text-stone-800">Lv.{character.level} {character.name}</div>
+                    <div className="text-sm text-stone-600">{character.title}</div>
+                    <div className="text-xs text-stone-500 mt-1">총 {myReviews.length}편 감상</div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  {[{ label: '총 감상', value: `${myReviews.length}편` }, { label: '평균 평점', value: getAverageRating(), color: 'text-amber-500' },
+                    { label: '이번 달', value: `${getMonthlyCount()}편` }, { label: '5점 영화', value: `${myReviews.filter(r => r.rating === 5).length}편` }
+                  ].map((stat, i) => (
+                    <div key={i} className="bg-white rounded-2xl p-4 border border-amber-100">
+                      <div className="text-xs text-stone-500 mb-1">{stat.label}</div>
+                      <div className={`text-2xl font-semibold ${stat.color || 'text-stone-800'}`}>{stat.value}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {myReviews.length > 0 && (
+                  <>
+                    <div className="bg-white rounded-2xl p-5 border border-amber-100">
+                      <h3 className="text-sm text-stone-500 uppercase tracking-widest mb-4">My Top 5</h3>
+                      <div className="space-y-3">
+                        {getTopRated().map((movie, idx) => (
+                          <div key={movie.id} className="flex items-center gap-3">
+                            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-medium ${idx === 0 ? 'bg-amber-400 text-white' : idx === 1 ? 'bg-stone-300 text-stone-700' : idx === 2 ? 'bg-amber-600 text-white' : 'bg-stone-100 text-stone-500'}`}>{idx + 1}</div>
+                            <div className="flex-1 text-sm text-stone-800">{movie.title}</div>
+                            <div className="text-sm text-amber-500">{renderStars(movie.rating)}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    {getGenreStats().length > 0 && (
+                      <div className="bg-white rounded-2xl p-5 border border-amber-100">
+                        <h3 className="text-sm text-stone-500 uppercase tracking-widest mb-4">장르별</h3>
+                        <div className="space-y-3">
+                          {getGenreStats().map(([genre, count]) => (
+                            <div key={genre} className="flex items-center gap-3">
+                              <div className="text-sm text-stone-700 w-24">{genre}</div>
+                              <div className="flex-1 bg-amber-50 rounded-full h-3 overflow-hidden">
+                                <div className="h-full bg-amber-300 rounded-full" style={{ width: `${(count / myReviews.length) * 100}%` }} />
+                              </div>
+                              <div className="text-sm text-stone-500 w-8 text-right">{count}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+                {myReviews.length === 0 && (
+                  <div className="text-center py-12 text-stone-500">
+                    <p>아직 기록이 없어요</p>
+                    <button onClick={() => setActiveTab('review')} className="mt-3 text-sm text-amber-600">첫 영화 기록하기</button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 리뷰 탭 */}
+            {activeTab === 'myReviews' && (
+              <div className="space-y-4">
+                {myReviews.length === 0 ? (
+                  <div className="text-center py-16 text-stone-500">
+                    <PixelCat level={character.level} size={64} animate={true} />
+                    <p className="mt-4">아직 작성한 리뷰가 없어요</p>
+                    <button onClick={() => setActiveTab('review')} className="mt-4 text-sm text-amber-600">첫 리뷰 쓰러가기</button>
+                  </div>
+                ) : (
+                  myReviews.map(review => (
+                    <article key={review.id} className="bg-white rounded-2xl p-5 border border-amber-100">
+                      <div className="flex items-start justify-between gap-4 mb-2">
+                        <div>
+                          <h3 className="text-stone-800 font-medium">{review.title}</h3>
+                          <div className="flex items-center gap-2 mt-1 flex-wrap">
+                            <span className="text-xs text-stone-500">{formatDate(review.date)}</span>
+                            {review.genre && <span className="text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">{review.genre}</span>}
+                          </div>
+                        </div>
+                        <div className="flex gap-1">
+                          <button onClick={() => startEdit(review)} className="p-1.5 text-stone-400 hover:text-amber-600" title="수정">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                          </button>
+                          <button onClick={() => window.open(createGoogleCalendarLink(review), '_blank')} className="p-1.5 text-stone-400 hover:text-amber-600" title="구글 캘린더에 추가">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                          </button>
+                          <button onClick={() => deleteReview(review.id)} className="p-1.5 text-stone-400 hover:text-red-500" title="삭제">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                          </button>
+                        </div>
+                      </div>
+                      <div className="text-sm text-amber-500 mb-2">{renderStars(review.rating)}</div>
+                      {review.review && <p className="text-sm text-stone-600">{review.review}</p>}
+                    </article>
+                  ))
+                )}
+              </div>
+            )}
+          </main>
+
+          <footer className="mt-auto py-6">
+            <p className="text-center text-xs text-stone-400">Powered by Gemini AI</p>
+          </footer>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('app')).render(<MovieRecommender />);
+  </script>
+</body>
+</html>
