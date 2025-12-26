@@ -205,17 +205,13 @@
 
       const handleRecordTitleChange = (value) => {
         setNewReview(prev => ({ ...prev, title: value }));
-        if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-        if (value.length >= 2) { searchTimerRef.current = setTimeout(() => searchMovies(value, 'record'), 600); }
-        else { setRecordSearchResults([]); setShowRecordResults(false); }
+        // 자동완성 비활성화 - API 한도 절약
       };
 
       const handleRecSearchChange = (value) => {
         setRecSearchQuery(value);
-        setPreferences(prev => ({ ...prev, selectedMovie: '' }));
-        if (recSearchTimerRef.current) clearTimeout(recSearchTimerRef.current);
-        if (value.length >= 2) { recSearchTimerRef.current = setTimeout(() => searchMovies(value, 'recommend'), 600); }
-        else { setRecSearchResults([]); setShowRecResults(false); }
+        setPreferences(prev => ({ ...prev, selectedMovie: value }));
+        // 자동완성 비활성화 - API 한도 절약
       };
 
       const getRecommendations = async () => {
