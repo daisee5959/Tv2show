@@ -22,7 +22,8 @@
 
   <script type="text/babel">
     const { useState, useEffect, useRef } = React;
-    const DEFAULT_API_KEY = 'AIzaSyBatwZPpW8hQQGdhruZtQ77e9sXA4Fox-A';
+    const DEFAULT_API_KEY = '';
+    const SAMPLE_KEY = 'AIzaSyD6vEpVW7dXh_fZvGUeaw0j7COfFOLVGOg';
     const getApiKey = () => localStorage.getItem('geminiApiKey') || DEFAULT_API_KEY;
 
     const PixelCat = ({ level, size = 64, animate = true }) => {
@@ -96,6 +97,14 @@
       const [showLevelModal, setShowLevelModal] = useState(false);
       const [showSettings, setShowSettings] = useState(false);
       const [apiKeyInput, setApiKeyInput] = useState('');
+      const [showFirstRun, setShowFirstRun] = useState(false);
+
+      // 첫 실행 시 API 키 없으면 팝업
+      useEffect(() => {
+        if (!localStorage.getItem('geminiApiKey')) {
+          setShowFirstRun(true);
+        }
+      }, []);
       const recordSearchRef = useRef(null);
       const recSearchRef = useRef(null);
       const searchTimerRef = useRef(null);
@@ -435,6 +444,68 @@
                       저장
                     </button>
                   </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 첫 실행 API 키 입력 팝업 */}
+          {showFirstRun && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+              <div className="bg-white rounded-2xl p-6 mx-4 max-w-sm w-full" onClick={e => e.stopPropagation()}>
+                <div className="text-center mb-4">
+                  <PixelCat level={1} size={64} animate={true} />
+                  <h2 className="text-lg font-bold text-stone-800 mt-2">안녕! 🎬</h2>
+                  <p className="text-sm text-stone-500 mt-1">영화 추천을 위해 API 키가 필요해요</p>
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs text-stone-500 uppercase tracking-widest mb-2">1. 키 복사하기</label>
+                    <div className="flex gap-2">
+                      <input 
+                        type="text" 
+                        value={SAMPLE_KEY}
+                        readOnly
+                        className="flex-1 bg-stone-50 border border-amber-100 rounded-xl px-3 py-2 text-stone-600 text-xs"
+                      />
+                      <button 
+                        onClick={() => {
+                          navigator.clipboard.writeText(SAMPLE_KEY);
+                          showToast('복사됨!');
+                        }}
+                        className="px-4 py-2 bg-amber-100 text-stone-700 rounded-xl hover:bg-amber-200 transition-colors text-sm font-medium"
+                      >
+                        복사
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-stone-500 uppercase tracking-widest mb-2">2. 여기에 붙여넣기</label>
+                    <input 
+                      type="text" 
+                      value={apiKeyInput} 
+                      onChange={(e) => setApiKeyInput(e.target.value)}
+                      placeholder="위 키를 복사해서 붙여넣기"
+                      className="w-full bg-white border border-amber-100 rounded-xl px-4 py-3 text-stone-800 placeholder-stone-400 focus:outline-none focus:border-amber-300 text-sm"
+                    />
+                  </div>
+                  <button 
+                    onClick={() => {
+                      if (apiKeyInput.trim()) {
+                        localStorage.setItem('geminiApiKey', apiKeyInput.trim());
+                        showToast('설정 완료!');
+                        setShowFirstRun(false);
+                      } else {
+                        showToast('키를 입력해주세요');
+                      }
+                    }}
+                    className="w-full py-3 bg-amber-200 text-stone-800 font-medium rounded-xl hover:bg-amber-300 transition-colors"
+                  >
+                    시작하기
+                  </button>
+                  <p className="text-xs text-stone-400 text-center">
+                    키가 만료되면 <a href="https://aistudio.google.com/apikey" target="_blank" className="text-amber-600 hover:underline">여기서</a> 새로 발급받으세요
+                  </p>
                 </div>
               </div>
             </div>
